@@ -182,24 +182,31 @@ class ConnectionManager:
             if peer_id in self.rooms[room_id]["peers"]:
                 # ONLY disconnect if the websocket matches (to avoid race conditions)
                 if websocket and self.rooms[room_id]["peers"][peer_id]["socket"] != websocket:
-                    return
+                    return False
 
                 del self.rooms[room_id]["peers"][peer_id]
                 # if presenter left → remove presenter
                 if self.rooms[room_id]["presenter"] == peer_id:
                     self.rooms[room_id]["presenter"] = None
+                
+                # if no one left (neither peers nor waiting) → delete the room
+                if not self.rooms[room_id]["peers"] and not self.rooms[room_id]["waiting"]:
+                    del self.rooms[room_id]
+                return True
             
             # check waiting
             elif peer_id in self.rooms[room_id]["waiting"]:
                 # ONLY disconnect if the websocket matches
                 if websocket and self.rooms[room_id]["waiting"][peer_id]["socket"] != websocket:
-                    return
+                    return False
 
                 del self.rooms[room_id]["waiting"][peer_id]
 
-            # if no one left (neither peers nor waiting) → delete the room
-            if not self.rooms[room_id]["peers"] and not self.rooms[room_id]["waiting"]:
-                del self.rooms[room_id]
+                # if no one left (neither peers nor waiting) → delete the room
+                if not self.rooms[room_id]["peers"] and not self.rooms[room_id]["waiting"]:
+                    del self.rooms[room_id]
+                return True
+        return False
 
     async def send_to_target(self, room_id: str, target_id: str, message: dict):
         # Send message to a specific user (check both lists)

@@ -114,7 +114,7 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
                 manager.disconnect(room_id, user_id, websocket) 
                 await manager.add_to_peers(room_id, user_id, websocket, username, role)
                 
-                # Broadast updated participants list to everyone
+                # Broadast updated participants list to everyone (including self)
                 users, presenter = manager.get_participants(room_id)
                 await manager.broadcast(room_id, {
                     "type": "participants",
@@ -246,26 +246,25 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
             
     # ========== USER DISCONNECTED ==========
     except WebSocketDisconnect:
+        # Remove user from room and only broadcast if they were actually removed
+        # (prevents redundant 'leave' when session is replaced by a newer tab)
+        if manager.disconnect(room_id, stable_peer_id, websocket):
+            # Get updated participants
+            users, presenter = manager.get_participants(room_id)
 
-        # Remove user from room
-        manager.disconnect(room_id, stable_peer_id, websocket)
+            # Notify everyone about new participant list
+            await manager.broadcast(room_id, {
+                "type": "participants",
+                "users": users,
+                "presenter": presenter
+            })
 
-        # Get updated participants
-        users, presenter = manager.get_participants(room_id)
-
-        # Notify everyone about new participant list
-        await manager.broadcast(room_id, {
-            "type": "participants",
-            "users": users,
-            "presenter": presenter
-        })
-
-        # Notify that user left
-        await manager.broadcast(room_id, {
-            "type": "leave",
-            "sender_id": stable_peer_id,
-            "message": f"User {stable_peer_id} has left the room"
-        })
+            # Notify that user left
+            await manager.broadcast(room_id, {
+                "type": "leave",
+                "sender_id": stable_peer_id,
+                "message": f"User {stable_peer_id} has left the room"
+            })
 
     # ========== HANDLE ERRORS ==========
     except Exception as e:
