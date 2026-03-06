@@ -55,7 +55,7 @@ app = FastAPI(title="MeetNow")
 # Without CORS, browser would block requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for ngrok compatibility
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], 
     allow_credentials=True,
     allow_methods=["*"],  # allow all HTTP methods (GET, POST etc.)
     allow_headers=["*"],  # allow all headers
@@ -76,29 +76,47 @@ def seed_users():
     try:
         # Demo users list
         users_to_seed = [
-            {"email": "admin@gmail.com", "password": "adminpassword", "role": UserRole.ADMIN},
+            {"email": "admin@gmail.com", "password": "adminpassword", "role": "admin"},
             {"email": "tutor@gmail.com", "password": "tutorpassword", "role": UserRole.TUTOR},
             {"email": "student@gmail.com", "password": "studentpassword", "role": UserRole.STUDENT},
             {"email": "student2@gmail.com", "password": "student2password", "role": UserRole.STUDENT},
         ]
 
-        # Loop through demo users
-        for user_data in users_to_seed:
+        # Create admin user if it doesn't exist
+        admin_user = db.query(User).filter(User.email == "admin@gmail.com").first()
+        if not admin_user:
+            hashed_password = get_password_hash("adminpassword")
+            admin_user = User(
+                username="admin",
+                email="admin@gmail.com",
+                password=hashed_password,
+                role="admin"  # Role is a string in DB
+            )
+            db.add(admin_user)
+            print("Admin user seeded.")
 
-            # Check if user already exists
-            user = db.query(User).filter(User.email == user_data["email"]).first()
+        # Seed Tutor
+        tutor_user = db.query(User).filter(User.email == "tutor@gmail.com").first()
+        if not tutor_user:
+            tutor_user = User(
+                username="tutor",
+                email="tutor@gmail.com",
+                password=get_password_hash("tutorpassword"),
+                role="tutor"
+            )
+            db.add(tutor_user)
 
-            if not user:
-                # Create new user with hashed password
-                new_user = User(
-                    email=user_data["email"],
-                    password=get_password_hash(user_data["password"]),
-                    role=user_data["role"]
-                )
-
-                # Add user to DB
-                db.add(new_user)
-
+        # Seed Students
+        student1 = db.query(User).filter(User.email == "student@gmail.com").first()
+        if not student1:
+            student1 = User(
+                username="student1",
+                email="student@gmail.com",
+                password=get_password_hash("studentpassword"),
+                role="student"
+            )
+            db.add(student1)
+        
         # Save all users to database
         db.commit()
 

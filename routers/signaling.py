@@ -3,6 +3,10 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 # Import the connection manager that handles rooms & users
 from signaling import manager
+from auth import SECRET_KEY, ALGORITHM
+from jose import jwt, JWTError
+from database import SessionLocal
+from models import User
 
 # Create a router for websocket endpoints
 router = APIRouter(
@@ -12,11 +16,43 @@ router = APIRouter(
 
 # WebSocket endpoint for a specific meeting room
 @router.websocket("/{room_id}")
-async def websocket_signaling(websocket: WebSocket, room_id: str):
+async def websocket_signaling(websocket: WebSocket, room_id: str, token: str = None):
+    # If token is not provided in query params, check headers (though usually query is safer for browser WS)
+    if not token:
+        token = websocket.query_params.get("token")
 
-    # Connect the user to the room and get a temporary peer ID
-    temp_peer_id = await manager.connect(room_id, websocket)
-    stable_peer_id = temp_peer_id # we'll update this once 'join' is received
+    if not token:
+        await websocket.close(code=4001) # Unauthorized
+        return
+
+    try:
+        # Decode JWT token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            await websocket.close(code=4001)
+            return
+            
+        # Verify user exists in DB
+        db = SessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        db.close()
+        
+        if not user:
+            await websocket.close(code=4001)
+            return
+
+        # Explicitly set identity from token
+        username = user.username
+        role = user.role
+        user_id = str(user.id)
+
+    except JWTError:
+        await websocket.close(code=4001)
+        return
+
+    # Connect the user to the room
+    stable_peer_id = await manager.connect(room_id, websocket, user_id=user_id, username=username, role=role)
 
     try:
         # Keep listening for messages forever while connected
@@ -30,13 +66,13 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
             
             # ========== WHEN USER JOINS ==========
             if data.get("type") == "join":
-                username = data.get("username", "Guest")
-                role = data.get("role", "student")
-                user_id = data.get("userId") or temp_peer_id # Use stable ID from frontend if provided
+                # Use authenticated info from token instead of message data
+                data["username"] = username
+                data["role"] = role
+                data["userId"] = user_id
                 
-                # Update our tracking ID to the stable one
-                stable_peer_id = user_id
-                data["sender_id"] = stable_peer_id
+                # Check for modes etc from message
+                mode = data.get("mode", "normal")
 
                 # CHECK IF ALREADY APPROVED (Seamless Re-join)
                 # If they were already in 'peers', they don't need to wait again
@@ -107,9 +143,10 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
 
             # ========== MEDIA READY (Student finished camera initialization) ==========
             if data.get("type") == "media-ready":
-                username = data.get("username", "Guest")
-                role = data.get("role", "student")
-                user_id = stable_peer_id
+                # Use verified info
+                data["username"] = username
+                data["role"] = role
+                data["userId"] = user_id
 
                 # Finalize the transition to 'peers'
                 # (Removing from waiting list if they were there)

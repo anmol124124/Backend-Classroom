@@ -8,13 +8,15 @@ from sqlalchemy.orm import sessionmaker
 # sessionmaker → used to create database sessions (connections)
 
 
-# =====================================
-# DATABASE URL
-# =====================================
+import os
+from dotenv import load_dotenv
 
-# This points to a SQLite database file named "course_era.db"
-# SQLite stores data in a single file (simple and lightweight DB)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./course_era.db"
+# Load environment variables
+load_dotenv()
+
+# This points to a SQLite database file
+# Defaulting to "meetnow.db" if not specified in .env
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./meetnow.db")
 
 
 # =====================================

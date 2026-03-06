@@ -5,18 +5,33 @@ import enum
 
 # UserRole - Same roles as in models, used for data validation
 class UserRole(str, enum.Enum):
-    ADMIN = "admin"
     TUTOR = "tutor"
     STUDENT = "student"
 
 # UserBase - Base schema with common user fields
 class UserBase(BaseModel):
     email: EmailStr  # Email validation - must be valid format
+    role: str # Keep as str to handle 'admin' in responses if needed, but signup uses UserRole enum
+
+class SignupRequest(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
     role: UserRole
 
 # UserCreate - Schema for creating a new user (includes password)
 class UserCreate(UserBase):
     password: str
+
+class UserSignupInfo(BaseModel):
+    username: str
+    email: EmailStr
+    role: str
+
+class SignupResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserSignupInfo
 
 # UserLogin - Schema for login request (only email and password needed)
 class UserLogin(BaseModel):
