@@ -144,12 +144,20 @@ def check_role(roles: list):
     # This function returns another function (dependency)
     async def role_checker(current_user: User = Depends(get_current_user)):
 
+        # DEBUG
+        print(f"--- ROLE CHECK ---")
+        print(f"User: {current_user.email}")
+        print(f"User Role: {current_user.role}")
+        print(f"Allowed Roles: {roles}")
+        
         # If user's role is not allowed
         if current_user.role not in roles:
+            print(f"REJECTED: {current_user.role} not in {roles}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have enough permissions to access this resource"
             )
+        print("APPROVED")
 
         # If role is valid → allow access
         return current_user
