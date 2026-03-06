@@ -55,7 +55,12 @@ app = FastAPI(title="MeetNow")
 # Without CORS, browser would block requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], 
+    allow_origins=[
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173",
+        "https://frontend-classroom-nine.vercel.app",
+        "https://backend-classroom-iprk.onrender.com"
+    ], 
     allow_credentials=True,
     allow_methods=["*"],  # allow all HTTP methods (GET, POST etc.)
     allow_headers=["*"],  # allow all headers
