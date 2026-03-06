@@ -40,21 +40,6 @@ class TokenData(BaseModel):
     email: Optional[str] = None  # Email from token
     role: Optional[str] = None   # Role from token
 
-# CourseBase - Base schema with common course fields
-class CourseBase(BaseModel):
-    title: str
-    description: Optional[str] = None  # Optional field - can be empty
-
-# CourseCreate - Schema for creating a new course
-class CourseCreate(CourseBase):
-    pass
-
-# Course - Schema for returning course info from database
-class Course(CourseBase):
-    id: int  # Course ID from database
-
-    class Config:
-        from_attributes = True
 
 # MeetingBase - Base schema for meetings
 class MeetingBase(BaseModel):
