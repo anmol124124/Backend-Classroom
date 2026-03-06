@@ -35,11 +35,10 @@ router = APIRouter(
 async def create_meeting(
     meeting: MeetingCreate,  # Data sent from the user (title etc.)
     db: Session = Depends(get_db),  # Connect to database
-    admin_user: User = Depends(check_role([UserRole.ADMIN]))  
-    # Only users with ADMIN role can access this
+    current_user: User = Depends(get_current_user)  
 ):
     """
-    Create a new meeting (Admin only).
+    Create a new meeting (Authenticated users only).
     Generates a unique room name automatically.
     """
     
@@ -51,7 +50,7 @@ async def create_meeting(
     db_meeting = Meeting(
         title=meeting.title,          # Take title from request
         room_id=room_id,              # Use generated unique room ID
-        created_by=admin_user.id      # Save which admin created it
+        created_by=current_user.id      # Save which user created it
     )
     
     # Add the new meeting to the database session
@@ -72,7 +71,7 @@ async def create_meeting(
 @router.get("/", response_model=list[MeetingResponse])
 async def read_all_meetings(
     db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role([UserRole.ADMIN, UserRole.TUTOR, UserRole.STUDENT]))
+    current_user: User = Depends(check_role(["admin", "tutor", "student"]))
     # Allow multiple roles to access
 ):
     """
@@ -88,7 +87,7 @@ async def read_all_meetings(
 async def read_meeting_by_room(
     room_id: str,  # Room ID comes from URL path
     db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role([UserRole.ADMIN, UserRole.TUTOR, UserRole.STUDENT]))
+    current_user: User = Depends(check_role(["admin", "tutor", "student"]))
 ):
     """
     Get meeting details by Room ID.
@@ -104,7 +103,7 @@ async def read_meeting_by_room(
 async def read_meeting(
     meeting_id: int,  # ID comes from URL path
     db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role([UserRole.ADMIN, UserRole.TUTOR, UserRole.STUDENT]))
+    current_user: User = Depends(check_role(["admin", "tutor", "student"]))
     # Allow multiple roles to access
 ):
     """
@@ -127,15 +126,63 @@ async def read_meeting(
 async def delete_meeting(
     meeting_id: int,
     db: Session = Depends(get_db),
-    admin_user: User = Depends(check_role([UserRole.ADMIN]))
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Delete a meeting (Admin only).
+    Delete a meeting (Owner or Admin).
     """
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     
+    # Check if user is owner or admin (string check for admin)
+    if meeting.created_by != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to delete this meeting")
+
     db.delete(meeting)
     db.commit()
     return None
+
+
+@router.post("/{room_id}/join")
+async def join_meeting(
+    room_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Verify and join a meeting.
+    """
+    meeting = db.query(Meeting).filter(Meeting.room_id == room_id).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    return {
+        "message": "Successfully joined meeting",
+        "meeting": {
+            "title": meeting.title,
+            "room_id": meeting.room_id,
+            "url": meeting.meeting_url
+        },
+        "user": {
+            "username": current_user.username,
+            "role": current_user.role
+        }
+    }
+
+
+@router.get("/{room_id}/participants")
+async def get_meeting_participants(
+    room_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all active participants in a meeting.
+    """
+    participants, presenter = manager.get_participants(room_id)
+    
+    return {
+        "room_id": room_id,
+        "participants": participants,
+        "presenter": presenter
+    }

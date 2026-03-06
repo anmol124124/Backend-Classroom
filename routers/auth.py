@@ -25,15 +25,70 @@ from auth import verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUT
 # create_access_token → creates a JWT token
 # ACCESS_TOKEN_EXPIRE_MINUTES → defines how long the token is valid
 
-from schemas import Token
+from schemas import Token, SignupRequest, SignupResponse
 # Defines the structure of the response (what the API will return)
 
 
-# Create a router for authentication-related APIs
 router = APIRouter(
     prefix="/auth",  # All routes will start with /auth (example: /auth/login)
     tags=["auth"]    # Groups these routes under "auth" in Swagger docs
 )
+
+
+# Signup endpoint - Create a new user (tutor/student only)
+@router.post("/signup", status_code=status.HTTP_201_CREATED)
+async def signup(
+    request: SignupRequest,
+    db: Session = Depends(get_db)
+):
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.email == request.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Hash password before saving
+    from auth import get_password_hash
+    hashed_pass = get_password_hash(request.password)
+
+    # Create new user instance
+    new_user = User(
+        username=request.username,
+        email=request.email,
+        password=hashed_pass,
+        role=request.role.value
+    )
+
+    # Save to database
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # Generate a JWT access token immediately for new user
+    # 24 hours expiry for initial access
+    access_token_expires = timedelta(hours=24)
+    
+    access_token = create_access_token(
+        data={
+            "sub": new_user.email,
+            "user_id": new_user.id,
+            "email": new_user.email,
+            "role": new_user.role
+        },
+        expires_delta=access_token_expires
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "username": new_user.username,
+            "email": new_user.email,
+            "role": new_user.role
+        }
+    }
 
 
 # Login endpoint → user logs in and receives a JWT token

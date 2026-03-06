@@ -52,7 +52,7 @@ async def read_users_me(
 @router.get("/", response_model=List[UserResponse])
 async def read_all_users(
     db: Session = Depends(get_db),  # Get database connection
-    admin_user: User = Depends(check_role([UserRole.ADMIN]))  # Only ADMIN can access
+    admin_user: User = Depends(check_role(["admin"]))  # Only ADMIN can access
 ):
     """
     Get all users (Admin only).

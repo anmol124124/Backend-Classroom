@@ -22,7 +22,6 @@ import enum
 # Tutor → can edit courses
 # Student → can only view courses
 class UserRole(str, enum.Enum):
-    ADMIN = "admin"
     TUTOR = "tutor"
     STUDENT = "student"
 
@@ -38,14 +37,20 @@ class User(Base):
     # Unique ID for each user (auto increases)
     id = Column(Integer, primary_key=True, index=True)
 
+    # Username of user
+    username = Column(String, nullable=False)
+
     # Email of user (must be unique)
     email = Column(String, unique=True, index=True, nullable=False)
 
     # Password (stored as hashed, never plain text)
     password = Column(String, nullable=False)
 
-    # Role of user (admin/tutor/student)
+    # Role of user (tutor/student)
     role = Column(String, default=UserRole.STUDENT)
+
+    # Creation timestamp
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     # Relationship to meetings
     meetings = relationship("Meeting", back_populates="creator")

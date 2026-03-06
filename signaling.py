@@ -38,7 +38,7 @@ class ConnectionManager:
         # }
         self.rooms: Dict[str, dict] = {}
 
-    async def connect(self, room_id: str, websocket: WebSocket):
+    async def connect(self, room_id: str, websocket: WebSocket, user_id: str = None, username: str = "Guest", role: str = "student"):
         # Accept the WebSocket connection
         await websocket.accept()
         
@@ -52,16 +52,18 @@ class ConnectionManager:
                 "approved_users": set()
             }
         
-        # We assign a temporary ID until the 'join' message provides the stable ID
-        temp_peer_id = str(uuid.uuid4())
+        # Use the provided user_id (from token) or generate a temporary one
+        peer_id = user_id or str(uuid.uuid4())
         
-        # Send the assigned temporary peer ID (just for initial identification)
+        # Send the assigned peer ID and user info
         await websocket.send_json({
             "type": "init",
-            "peer_id": temp_peer_id
+            "peer_id": peer_id,
+            "username": username,
+            "role": role
         })
         
-        return temp_peer_id
+        return peer_id
 
     async def move_to_waiting(self, room_id: str, peer_id: str, websocket: WebSocket, username: str, role: str, mode: str = "normal"):
         # Add user to waiting list, replacing existing session if found
