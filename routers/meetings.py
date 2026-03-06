@@ -35,10 +35,10 @@ router = APIRouter(
 async def create_meeting(
     meeting: MeetingCreate,  # Data sent from the user (title etc.)
     db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(get_current_user)  
+    current_user: User = Depends(check_role(["admin"]))  
 ):
     """
-    Create a new meeting (Authenticated users only).
+    Create a new meeting (Admin only).
     Generates a unique room name automatically.
     """
     
