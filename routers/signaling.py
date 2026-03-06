@@ -44,7 +44,8 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
                 
                 # IF ADMIN -> Join normally
                 if role == "admin":
-                    await manager.add_to_peers(room_id, user_id, websocket, username, role)
+                    mode = data.get("mode", "normal")
+                    await manager.add_to_peers(room_id, user_id, websocket, username, role, mode)
                     
                     # Get updated participant list & presenter
                     users, presenter = manager.get_participants(room_id)
@@ -87,7 +88,8 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
 
                 # IF NEW STUDENT -> Move to Waiting Room
                 else:
-                    await manager.move_to_waiting(room_id, user_id, websocket, username, role)
+                    mode = data.get("mode", "normal")
+                    await manager.move_to_waiting(room_id, user_id, websocket, username, role, mode)
                     
                     # Notify admins in the room
                     await manager.broadcast(room_id, {
@@ -111,8 +113,12 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
 
                 # Finalize the transition to 'peers'
                 # (Removing from waiting list if they were there)
+                # We need to remember the mode they had in waiting
+                waiting_user = manager.rooms.get(room_id, {}).get("waiting", {}).get(user_id, {})
+                mode = waiting_user.get("mode", "normal")
+                
                 manager.disconnect(room_id, user_id, websocket) 
-                await manager.add_to_peers(room_id, user_id, websocket, username, role)
+                await manager.add_to_peers(room_id, user_id, websocket, username, role, mode)
                 
                 # Broadast updated participants list to everyone (including self)
                 users, presenter = manager.get_participants(room_id)
@@ -172,19 +178,47 @@ async def websocket_signaling(websocket: WebSocket, room_id: str):
 
             # ========== SCREEN SHARE EVENT ==========
             if data.get("type") == "screen-share":
-
-                # If user started sharing screen
                 if data.get("isSharing"):
                     manager.set_presenter(room_id, stable_peer_id)
-
-                # If user stopped sharing
                 else:
                     users, presenter = manager.get_participants(room_id)
-
-                    # Remove presenter if this user was presenting
                     if presenter == stable_peer_id:
                         manager.set_presenter(room_id, None)
 
+                # Broadcast sync
+                users, presenter = manager.get_participants(room_id)
+                await manager.broadcast(room_id, {
+                    "type": "participants",
+                    "users": users,
+                    "presenter": presenter
+                })
+                continue
+
+            elif data.get("type") == "screen-share-started":
+                manager.set_presenter(room_id, stable_peer_id)
+                users, presenter = manager.get_participants(room_id)
+                await manager.broadcast(room_id, {
+                    "type": "participants",
+                    "users": users,
+                    "presenter": presenter
+                })
+                # Also broadcast the original message so everyone starts their PC if needed
+                await manager.broadcast(room_id, data, sender_id=stable_peer_id)
+                continue
+
+            elif data.get("type") == "screen-share-stopped":
+                users, presenter = manager.get_participants(room_id)
+                if presenter == stable_peer_id:
+                    manager.set_presenter(room_id, None)
+                
+                users, presenter = manager.get_participants(room_id)
+                await manager.broadcast(room_id, {
+                    "type": "participants",
+                    "users": users,
+                    "presenter": presenter
+                })
+                # Also broadcast the original message
+                await manager.broadcast(room_id, data, sender_id=stable_peer_id)
                 continue
 
             # ========== CHAT MESSAGE ==========

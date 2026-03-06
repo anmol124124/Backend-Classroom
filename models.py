@@ -51,22 +51,6 @@ class User(Base):
     meetings = relationship("Meeting", back_populates="creator")
 
 
-# =====================================
-# COURSE TABLE MODEL
-# =====================================
-
-# This class represents the "courses" table in database
-class Course(Base):
-    __tablename__ = "courses"
-
-    # Unique ID for each course
-    id = Column(Integer, primary_key=True, index=True)
-
-    # Course title
-    title = Column(String, index=True, nullable=False)
-
-    # Course description (optional)
-    description = Column(String, nullable=True)
 
 
 # =====================================

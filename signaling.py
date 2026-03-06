@@ -14,17 +14,26 @@ class ConnectionManager:
         # Structure:
         # rooms = {
         #   room_id: {
-        #       "peers": { ... },     # approved users
+        #       "peers": {
+        #           peer_id: {
+        #               "socket": WebSocket,
+        #               "username": str,
+        #               "role": str,
+        #               "mode": str  # "normal" or "companion"
+        #           }
+        #       },
         #       "waiting": {          # users waiting for approval
         #           peer_id: {
         #               "socket": WebSocket,
         #               "username": str,
-        #               "role": str
+        #               "role": str,
+        #               "mode": str
         #           }
         #       },
         #       "presenter": peer_id,
         #       "messages": [],
         #       "approved_users": set()  # persistent approval for the session
+        #   }
         #   }
         # }
         self.rooms: Dict[str, dict] = {}
@@ -54,7 +63,7 @@ class ConnectionManager:
         
         return temp_peer_id
 
-    async def move_to_waiting(self, room_id: str, peer_id: str, websocket: WebSocket, username: str, role: str):
+    async def move_to_waiting(self, room_id: str, peer_id: str, websocket: WebSocket, username: str, role: str, mode: str = "normal"):
         # Add user to waiting list, replacing existing session if found
         if room_id in self.rooms:
             # Check if this user already has a session (anywhere)
@@ -63,10 +72,11 @@ class ConnectionManager:
             self.rooms[room_id]["waiting"][peer_id] = {
                 "socket": websocket,
                 "username": username,
-                "role": role
+                "role": role,
+                "mode": mode
             }
 
-    async def add_to_peers(self, room_id: str, peer_id: str, websocket: WebSocket, username: str, role: str):
+    async def add_to_peers(self, room_id: str, peer_id: str, websocket: WebSocket, username: str, role: str, mode: str = "normal"):
         # Add user to approved peers list, replacing existing session if found
         if room_id in self.rooms:
             # Check if this user already has a session (anywhere)
@@ -75,7 +85,8 @@ class ConnectionManager:
             self.rooms[room_id]["peers"][peer_id] = {
                 "socket": websocket,
                 "username": username,
-                "role": role
+                "role": role,
+                "mode": mode
             }
             # Record that this user is approved for this room session
             self.rooms[room_id]["approved_users"].add(peer_id)
@@ -131,7 +142,8 @@ class ConnectionManager:
                 {
                     "userId": pid,
                     "username": info["username"],
-                    "role": info.get("role", "student")
+                    "role": info.get("role", "student"),
+                    "mode": info.get("mode", "normal")
                 }
                 for pid, info in self.rooms[room_id]["peers"].items()
             ]

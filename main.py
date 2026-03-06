@@ -21,7 +21,7 @@ from models import User, UserRole
 from auth import get_password_hash
 # get_password_hash → hashes plain password before storing in DB
 
-from routers import auth, users, courses, meetings, signaling
+from routers import auth, users, meetings, signaling
 # Import all route files (auth routes, user routes, course routes)
 
 from sqlalchemy.orm import Session
@@ -44,7 +44,7 @@ Base.metadata.create_all(bind=engine)
 # CREATE FASTAPI APP
 # =====================================
 
-app = FastAPI(title="Course Management System")
+app = FastAPI(title="MeetNow")
 
 
 # =====================================
@@ -130,7 +130,6 @@ async def startup_event():
 # Add all route files into main app
 app.include_router(auth.router)     # login routes
 app.include_router(users.router)    # user routes
-app.include_router(courses.router)  # course routes
 app.include_router(meetings.router) # meeting routes
 app.include_router(signaling.router) # signaling routes (WebSocket)
 
@@ -166,4 +165,4 @@ async def serve_frontend(request: Request, rest_of_path: str):
 # Simple test endpoint to check API running
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Course Management System API"}
+    return {"message": "Welcome to the MeetNow API"}
