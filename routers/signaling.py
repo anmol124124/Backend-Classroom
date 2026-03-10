@@ -6,7 +6,7 @@ from signaling import manager
 from auth import SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 from database import SessionLocal
-from models import User
+from models import User, Meeting
 
 # Create a router for websocket endpoints
 router = APIRouter(
@@ -36,12 +36,21 @@ async def websocket_signaling(websocket: WebSocket, room_id: str, token: str = N
         # Verify user exists in DB
         db = SessionLocal()
         user = db.query(User).filter(User.email == email).first()
-        db.close()
         
         if not user:
+            db.close()
             await websocket.close(code=4001)
             return
 
+        # Verify meeting exists in DB
+        meeting = db.query(Meeting).filter(Meeting.room_id == room_id).first()
+        if not meeting:
+            db.close()
+            await websocket.close(code=4004) # Not Found
+            return
+            
+        db.close()
+        
         # Explicitly set identity from token
         username = user.username
         role = user.role
