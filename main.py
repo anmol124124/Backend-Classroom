@@ -9,7 +9,7 @@ load_dotenv()
 # FastAPI → main framework
 # Depends → for dependency injection (not heavily used here)
 
-from database import engine, Base, SessionLocal
+from database import engine, Base, SessionLocal, get_db
 # engine → database connection engine
 # Base → base class for all models
 # SessionLocal → used to create DB sessions
@@ -47,23 +47,18 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="MeetNow")
 
 
-# =====================================
 # CORS CONFIGURATION
 # =====================================
 
-# This allows frontend (React app) to call this backend
-# Without CORS, browser would block requests
+# Load frontend URL from environment for production security
+frontend_url = os.getenv("FRONTEND_URL", "*")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173",
-        "https://frontend-classroom-nine.vercel.app",
-        "https://backend-classroom-iprk.onrender.com"
-    ], 
+    allow_origins=[frontend_url] if frontend_url != "*" else ["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # allow all HTTP methods (GET, POST etc.)
-    allow_headers=["*"],  # allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -157,6 +152,68 @@ app.include_router(meetings.router) # meeting routes
 app.include_router(signaling.router) # signaling routes (WebSocket)
 
 # =====================================
+# SERVE SDK
+# =====================================
+from fastapi.staticfiles import StaticFiles
+sdk_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sdk")
+
+@app.get("/sdk.js")
+async def get_sdk_js():
+    sdk_file_path = os.path.join(sdk_dir, "sdk.js")
+    if os.path.exists(sdk_file_path):
+        return FileResponse(sdk_file_path)
+    return {"error": "SDK file not found"}
+
+if os.path.exists(sdk_dir):
+    app.mount("/sdk", StaticFiles(directory=sdk_dir), name="sdk")
+
+# =====================================
+# MEETING ALIAS ROUTE
+# =====================================
+@app.get("/meeting/{meeting_id}")
+async def meeting_page_alias(request: Request, meeting_id: str, db: Session = Depends(get_db)):
+    """
+    Alias route for /meeting/{id}.
+    Serves HTML for browsers and JSON for API clients.
+    """
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept:
+        # API behavior: Return JSON data
+        from routers.meetings import read_meeting_by_room
+        # We allow public info check here, or it will throw 401 if auth is missing in the handler
+        return await read_meeting_by_room(meeting_id, db, current_user=None)
+    
+    # Browser behavior: Serve the SPA
+    index_path = os.path.join(frontend_dist, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"error": "Frontend build not found"}
+
+# =====================================
+# HEALTH CHECK
+# =====================================
+@app.get("/health")
+async def health_check():
+    """
+    Standard health check endpoint.
+    """
+    return {
+        "status": "ok",
+        "service": "meeting-microservice"
+    }
+
+
+# =====================================
+# ROOT ENDPOINT
+# =====================================
+
+# Simple test endpoint to check API running
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the MeetNow API"}
+
+
+# =====================================
 # SERVE FRONTEND (Single Tunnel Support)
 # =====================================
 
@@ -170,15 +227,31 @@ if os.path.exists(os.path.join(frontend_dist, "assets")):
 # Catch-all route to serve the SPA (React handles routing)
 @app.get("/{rest_of_path:path}")
 async def serve_frontend(request: Request, rest_of_path: str):
-    # Don't intercept API or WebSocket calls that might have slipped through
-    if rest_of_path.startswith("api/") or rest_of_path.startswith("ws/"):
+    # Don't intercept API or WebSocket calls
+    if rest_of_path.startswith("auth/") or rest_of_path.startswith("meetings/") or rest_of_path.startswith("ws/"):
         return {"detail": "Not Found"}
     
-    # Serve index.html for all other paths
+    # Serve index.html for all other paths (including /meeting/{room_id})
     index_path = os.path.join(frontend_dist, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return {"error": "Frontend build not found. Please run 'npm run build' in the frontend directory."}
+    
+    # Only return error if build is truly missing
+    return {"error": "Frontend build not found at " + index_path}
+
+
+# =====================================
+# HEALTH CHECK
+# =====================================
+@app.get("/health")
+async def health_check():
+    """
+    Standard health check endpoint.
+    """
+    return {
+        "status": "ok",
+        "service": "meeting-microservice"
+    }
 
 
 # =====================================

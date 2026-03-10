@@ -35,10 +35,10 @@ router = APIRouter(
 async def create_meeting(
     meeting: MeetingCreate,  # Data sent from the user (title etc.)
     db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role(["admin"]))  
+    current_user: User = Depends(check_role(["admin", "tutor"]))  
 ):
     """
-    Create a new meeting (Admin only).
+    Create a new meeting (Admin and Tutor only).
     Generates a unique room name automatically.
     """
     
@@ -135,8 +135,9 @@ async def delete_meeting(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     
-    # Check if user is owner or admin (string check for admin)
-    if meeting.created_by != current_user.id and current_user.role != "admin":
+    # Check if user is owner or has admin/tutor role (case-insensitive)
+    user_role_lower = current_user.role.lower()
+    if meeting.created_by != current_user.id and user_role_lower not in ["admin", "tutor"]:
         raise HTTPException(status_code=403, detail="Not authorized to delete this meeting")
 
     db.delete(meeting)
