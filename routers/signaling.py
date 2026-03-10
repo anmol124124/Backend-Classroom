@@ -74,50 +74,13 @@ async def websocket_signaling(websocket: WebSocket, room_id: str, token: str = N
                 # Check for modes etc from message
                 mode = data.get("mode", "normal")
 
-                # CHECK IF ALREADY APPROVED (Seamless Re-join)
-                # If they were already in 'peers', they don't need to wait again
+                # CHECK IF ALREADY APPROVED (Seamless Re-join) or HAS HOST PRIVILEGES
+                is_host = role in ["admin", "tutor"]
                 is_already_approved = room_id in manager.rooms and user_id in manager.rooms[room_id]["approved_users"]
                 
-                # IF ADMIN -> Join normally
-                if role == "admin":
-                    mode = data.get("mode", "normal")
-                    await manager.add_to_peers(room_id, user_id, websocket, username, role, mode)
-                    
-                    # Get updated participant list & presenter
-                    users, presenter = manager.get_participants(room_id)
-
-                    # Send updated participants list to everyone approved
-                    await manager.broadcast(room_id, {
-                        "type": "participants",
-                        "users": users,
-                        "presenter": presenter
-                    })
-
-                    # Tell other approved peers someone joined
-                    await manager.broadcast(room_id, {
-                        "type": "join",
-                        "sender_id": user_id,
-                        "username": username
-                    }, sender_id=user_id)
-
-                    history = manager.get_messages(room_id)
-                    if history:
-                        await websocket.send_json({
-                            "type": "chat-history",
-                            "history": history
-                        })
-                    
-                    # Send the current waiting room list
-                    waiting_users = manager.get_waiting_users(room_id)
-                    if waiting_users:
-                        await websocket.send_json({
-                            "type": "waiting-users-list",
-                            "users": waiting_users
-                        })
-
-                # IF STUDENT (PREVIOUSLY APPROVED) -> Seamless Re-join flow
-                elif is_already_approved:
-                    print(f"User {user_id} re-joining approved room {room_id}. Sending join-approved.")
+                # IF HOST or PREVIOUSLY APPROVED -> Join normally via approved flow
+                if is_host or is_already_approved:
+                    print(f"User {user_id} ({role}) approved for room {room_id}. Sending join-approved.")
                     await websocket.send_json({
                         "type": "join-approved"
                     })
@@ -179,12 +142,21 @@ async def websocket_signaling(websocket: WebSocket, room_id: str, token: str = N
                         "type": "chat-history",
                         "history": history
                     })
+                
+                # For Hosts (Admin/Tutor), also send the current waiting room list
+                if role in ["admin", "tutor"]:
+                    waiting_users = manager.get_waiting_users(room_id)
+                    if waiting_users:
+                        await websocket.send_json({
+                            "type": "waiting-users-list",
+                            "users": waiting_users
+                        })
                 continue
 
             # ========== ADMIN APPROVE USER ==========
             if data.get("type") == "approve-user":
                 sender_info = manager.rooms.get(room_id, {}).get("peers", {}).get(stable_peer_id, {})
-                if sender_info.get("role") == "admin":
+                if sender_info.get("role") in ["admin", "tutor"]:
                     target_id = data.get("targetUserId")
                     waiting_user = manager.rooms.get(room_id, {}).get("waiting", {}).get(target_id)
                     
@@ -208,7 +180,7 @@ async def websocket_signaling(websocket: WebSocket, room_id: str, token: str = N
             # ========== ADMIN REJECT USER ==========
             if data.get("type") == "reject-user":
                 sender_info = manager.rooms.get(room_id, {}).get("peers", {}).get(stable_peer_id, {})
-                if sender_info.get("role") == "admin":
+                if sender_info.get("role") in ["admin", "tutor"]:
                     target_id = data.get("targetUserId")
                     await manager.kick_user(room_id, target_id)
                 continue
@@ -275,8 +247,8 @@ async def websocket_signaling(websocket: WebSocket, room_id: str, token: str = N
                 # Get info about sender
                 sender_info = manager.rooms.get(room_id, {}).get("peers", {}).get(stable_peer_id, {})
 
-                # Only admin can kick users
-                if sender_info.get("role") == "admin":
+                # Only admin or tutor can kick users
+                if sender_info.get("role") in ["admin", "tutor"]:
 
                     # ID of user to remove
                     target_id = data.get("targetUserId")

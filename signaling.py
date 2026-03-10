@@ -168,9 +168,9 @@ class ConnectionManager:
         return []
 
     def get_admins(self, room_id: str):
-        # Get list of admin peer IDs in the room
+        # Get list of admin peer IDs (Admins and Tutors) in the room
         if room_id in self.rooms:
-            return [pid for pid, info in self.rooms[room_id]["peers"].items() if info.get("role") == "admin"]
+            return [pid for pid, info in self.rooms[room_id]["peers"].items() if info.get("role") in ["admin", "tutor"]]
         return []
 
     def set_presenter(self, room_id: str, peer_id: str):
@@ -237,7 +237,7 @@ class ConnectionManager:
         if room_id in self.rooms:
             for peer_id, info in self.rooms[room_id]["peers"].items():
                 if peer_id != sender_id:
-                    if only_admins and info.get("role") != "admin":
+                    if only_admins and info.get("role") not in ["admin", "tutor"]:
                         continue
                     try:
                         await info["socket"].send_json(message)

@@ -114,10 +114,10 @@ async def login_for_access_token(
     # Set how long the token will be valid (example: 30 minutes)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-    # Create the JWT token
     access_token = create_access_token(
         data={
             "sub": user.email,  # Store user email inside token
+            "user_id": user.id, # Store user id inside token
             "role": user.role   # Store user role inside token (admin/user)
         },
         expires_delta=access_token_expires

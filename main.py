@@ -55,12 +55,7 @@ app = FastAPI(title="MeetNow")
 # Without CORS, browser would block requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173",
-        "https://frontend-classroom-nine.vercel.app",
-        "https://backend-classroom-iprk.onrender.com"
-    ], 
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],  # allow all HTTP methods (GET, POST etc.)
     allow_headers=["*"],  # allow all headers
@@ -157,6 +152,14 @@ app.include_router(meetings.router) # meeting routes
 app.include_router(signaling.router) # signaling routes (WebSocket)
 
 # =====================================
+# SERVE SDK
+# =====================================
+from fastapi.staticfiles import StaticFiles
+sdk_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sdk")
+if os.path.exists(sdk_dir):
+    app.mount("/sdk", StaticFiles(directory=sdk_dir), name="sdk")
+
+# =====================================
 # SERVE FRONTEND (Single Tunnel Support)
 # =====================================
 
@@ -170,15 +173,17 @@ if os.path.exists(os.path.join(frontend_dist, "assets")):
 # Catch-all route to serve the SPA (React handles routing)
 @app.get("/{rest_of_path:path}")
 async def serve_frontend(request: Request, rest_of_path: str):
-    # Don't intercept API or WebSocket calls that might have slipped through
-    if rest_of_path.startswith("api/") or rest_of_path.startswith("ws/"):
+    # Don't intercept API or WebSocket calls
+    if rest_of_path.startswith("auth/") or rest_of_path.startswith("meetings/") or rest_of_path.startswith("ws/"):
         return {"detail": "Not Found"}
     
-    # Serve index.html for all other paths
+    # Serve index.html for all other paths (including /meeting/{room_id})
     index_path = os.path.join(frontend_dist, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return {"error": "Frontend build not found. Please run 'npm run build' in the frontend directory."}
+    
+    # Only return error if build is truly missing
+    return {"error": "Frontend build not found at " + index_path}
 
 
 # =====================================

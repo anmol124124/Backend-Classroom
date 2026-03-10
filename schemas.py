@@ -69,6 +69,7 @@ class MeetingResponse(MeetingBase):
     id: int
     room_id: str
     meeting_url: str
+    created_by: int
     created_at: datetime
 
     class Config:
