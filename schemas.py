@@ -74,3 +74,5 @@ class MeetingResponse(MeetingBase):
 
     class Config:
         from_attributes = True
+
+

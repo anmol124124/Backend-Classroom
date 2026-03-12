@@ -1,4 +1,5 @@
 import os
+import secrets
 # Used to read environment variables (like SECRET_KEY)
 
 from datetime import datetime, timedelta
@@ -14,7 +15,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 # Used to hash and verify passwords securely
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Header
 # Depends → FastAPI automatically provides things (user, db etc.)
 # HTTPException → used to throw errors
 # status → HTTP status codes
