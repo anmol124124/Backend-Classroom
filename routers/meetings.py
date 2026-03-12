@@ -16,6 +16,7 @@ from models import Meeting, User, UserRole
 # Import authentication and role-checking functions
 from auth import get_current_user, check_role
 
+
 # Import request and response data formats (schemas)
 from schemas import MeetingCreate, MeetingResponse
 
@@ -35,7 +36,7 @@ router = APIRouter(
 async def create_meeting(
     meeting: MeetingCreate,  # Data sent from the user (title etc.)
     db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role(["admin", "tutor"]))  
+    current_user: User = Depends(check_role(["admin", "tutor"])) # 2. JWT Validation
 ):
     """
     Create a new meeting (Admin and Tutor only).
@@ -67,15 +68,13 @@ async def create_meeting(
 
 
 # This endpoint returns all meetings
-# Accessible by Admin, Tutor, and Student
+# Accessible publically
 @router.get("/", response_model=list[MeetingResponse])
 async def read_all_meetings(
-    db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role(["admin", "tutor", "student"]))
-    # Allow multiple roles to access
+    db: Session = Depends(get_db)  # Connect to database
 ):
     """
-    View all meetings (All authenticated users can access).
+    View all meetings (Publicly accessible).
     """
     
     # Query database and return all meeting records
@@ -86,11 +85,10 @@ async def read_all_meetings(
 @router.get("/room/{room_id}", response_model=MeetingResponse)
 async def read_meeting_by_room(
     room_id: str,  # Room ID comes from URL path
-    db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role(["admin", "tutor", "student"]))
+    db: Session = Depends(get_db)  # Connect to database
 ):
     """
-    Get meeting details by Room ID.
+    Get meeting details by Room ID (Publicly accessible).
     """
     meeting = db.query(Meeting).filter(Meeting.room_id == room_id).first()
     if not meeting:
@@ -102,12 +100,10 @@ async def read_meeting_by_room(
 @router.get("/{meeting_id}", response_model=MeetingResponse)
 async def read_meeting(
     meeting_id: int,  # ID comes from URL path
-    db: Session = Depends(get_db),  # Connect to database
-    current_user: User = Depends(check_role(["admin", "tutor", "student"]))
-    # Allow multiple roles to access
+    db: Session = Depends(get_db)  # Connect to database
 ):
     """
-    Get meeting details by ID.
+    Get meeting details by ID (Publicly accessible).
     """
     
     # Search for meeting in database where id matches

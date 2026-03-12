@@ -9,10 +9,10 @@
          * @param {string} options.container - The CSS selector for the container element
          */
         join: function (options) {
-            const { meetingId, token, container, onLeave } = options;
+            const { roomId, container, onLeave, token } = options;
 
-            if (!meetingId || !token || !container) {
-                console.error('MeetingSDK Error: meetingId, token, and container are required.');
+            if (!roomId || !container) {
+                console.error('MeetingSDK Error: roomId and container are required.');
                 return;
             }
 
@@ -25,32 +25,30 @@
             // Meeting service backend URL
             const BACKEND_URL = "http://localhost:8000";
 
-            // Construct the meeting room URL with token and embedded flag
-            const meetingUrl = `${BACKEND_URL}/meeting/${meetingId}?token=${token}&embedded=true`;
+            // Construct the meeting room URL
+            let meetingUrl = `${BACKEND_URL}/meeting/${roomId}?embedded=true`;
+            if (token) {
+                meetingUrl += `&token=${token}`;
+            }
 
             // Create and configure the iframe
             const iframe = document.createElement('iframe');
             iframe.src = meetingUrl;
             iframe.style.width = '100%';
             iframe.style.height = '100%';
-            iframe.style.minHeight = '500px';
             iframe.style.border = 'none';
 
             // Critical permissions for WebRTC inside iframes
             iframe.allow = "camera; microphone; display-capture; fullscreen; autoplay";
             iframe.setAttribute("allowfullscreen", "true");
 
-            // Security sandbox with necessary permissions
-            iframe.setAttribute("sandbox", "allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-downloads");
-
             // Clear container and append iframe
             containerElement.innerHTML = '';
             containerElement.appendChild(iframe);
 
-            // Handle messages from the iframe (e.g., when the user leaves)
+            // Handle messages from the iframe
             const messageHandler = function (event) {
                 if (event.data && event.data.type === 'meeting-ended') {
-                    console.log('MeetingSDK: Meeting ended.');
                     if (typeof onLeave === 'function') {
                         onLeave();
                     }
@@ -59,7 +57,7 @@
             };
             window.addEventListener('message', messageHandler);
 
-            console.log(`MeetingSDK: Joined room ${meetingId} in container ${container}`);
+            console.log(`MeetingSDK: Joined room ${roomId} in container ${container}`);
         }
     };
 

@@ -3,158 +3,110 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
 
 # Load environment variables from .env file
 load_dotenv()
-# FastAPI → main framework
-# Depends → for dependency injection (not heavily used here)
 
 from database import engine, Base, SessionLocal, get_db
-# engine → database connection engine
-# Base → base class for all models
-# SessionLocal → used to create DB sessions
-
 from models import User, UserRole
-# User → user table model
-# UserRole → roles enum (ADMIN, TUTOR, STUDENT)
-
 from auth import get_password_hash
-# get_password_hash → hashes plain password before storing in DB
-
 from routers import auth, users, meetings, signaling
-# Import all route files (auth routes, user routes, course routes)
-
-from sqlalchemy.orm import Session
-# DB session type
-
 from fastapi.middleware.cors import CORSMiddleware
-# Middleware that allows frontend to call backend APIs
-
 
 # =====================================
 # CREATE DATABASE TABLES
 # =====================================
-
-# This creates all tables in database based on models
-# Example: User table, Course table etc.
 Base.metadata.create_all(bind=engine)
-
 
 # =====================================
 # CREATE FASTAPI APP
 # =====================================
-
 app = FastAPI(title="MeetNow")
 
+# =====================================
+# SERVE ADMIN DASHBOARD (Priority Mount)
+# =====================================
+admin_dashboard_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "admin-dashboard")
+if os.path.exists(admin_dashboard_dir):
+    app.mount("/admin-portal", StaticFiles(directory=admin_dashboard_dir, html=True), name="admin_portal")
 
+# =====================================
 # CORS CONFIGURATION
 # =====================================
-
-# Load frontend URL from environment for production security
-frontend_url = os.getenv("FRONTEND_URL", "*")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url] if frontend_url != "*" else ["*"],
+    allow_origin_regex=".*",  # Allows all origins while still supporting credentials
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 # =====================================
 # SEED DEMO USERS FUNCTION
 # =====================================
-
-# This function creates demo users automatically
-# So we can test login without manually adding users
 def seed_users():
-
-    # Create DB session
     db = SessionLocal()
-
     try:
-        # Demo users list
         users_to_seed = [
             {"email": "admin@gmail.com", "password": "adminpassword", "role": "admin"},
             {"email": "tutor@gmail.com", "password": "tutorpassword", "role": UserRole.TUTOR},
             {"email": "student@gmail.com", "password": "studentpassword", "role": UserRole.STUDENT},
-            {"email": "student2@gmail.com", "password": "student2password", "role": UserRole.STUDENT},
         ]
 
-        # Create admin user if it doesn't exist
         admin_user = db.query(User).filter(User.email == "admin@gmail.com").first()
         if not admin_user:
-            hashed_password = get_password_hash("adminpassword")
-            admin_user = User(
+            db.add(User(
                 username="admin",
                 email="admin@gmail.com",
-                password=hashed_password,
-                role="admin"  # Role is a string in DB
-            )
-            db.add(admin_user)
+                password=get_password_hash("adminpassword"),
+                role="admin"
+            ))
             print("Admin user seeded.")
 
-        # Seed Tutor
         tutor_user = db.query(User).filter(User.email == "tutor@gmail.com").first()
         if not tutor_user:
-            tutor_user = User(
+            db.add(User(
                 username="tutor",
                 email="tutor@gmail.com",
                 password=get_password_hash("tutorpassword"),
                 role="tutor"
-            )
-            db.add(tutor_user)
+            ))
 
-        # Seed Students
         student1 = db.query(User).filter(User.email == "student@gmail.com").first()
         if not student1:
-            student1 = User(
+            db.add(User(
                 username="student1",
                 email="student@gmail.com",
                 password=get_password_hash("studentpassword"),
                 role="student"
-            )
-            db.add(student1)
+            ))
         
-        # Save all users to database
         db.commit()
-
     except Exception as e:
-        # If error happens → print error and rollback
         print(f"Error seeding users: {e}")
         db.rollback()
-
     finally:
-        # Always close DB connection
         db.close()
 
-
-# =====================================
-# STARTUP EVENT
-# =====================================
-
-# This runs automatically when app starts
-# It will create demo users
 @app.on_event("startup")
 async def startup_event():
     seed_users()
 
-
 # =====================================
 # INCLUDE ROUTERS
 # =====================================
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(meetings.router)
+app.include_router(signaling.router)
 
-# Add all route files into main app
-app.include_router(auth.router)     # login routes
-app.include_router(users.router)    # user routes
-app.include_router(meetings.router) # meeting routes
-app.include_router(signaling.router) # signaling routes (WebSocket)
+
+
 
 # =====================================
 # SERVE SDK
 # =====================================
-from fastapi.staticfiles import StaticFiles
 sdk_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sdk")
 
 @app.get("/sdk.js")
@@ -168,22 +120,34 @@ if os.path.exists(sdk_dir):
     app.mount("/sdk", StaticFiles(directory=sdk_dir), name="sdk")
 
 # =====================================
-# MEETING ALIAS ROUTE
+# MEETING ALIAS ROUTE (Auto-Creation)
 # =====================================
+frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+
 @app.get("/meeting/{meeting_id}")
 async def meeting_page_alias(request: Request, meeting_id: str, db: Session = Depends(get_db)):
-    """
-    Alias route for /meeting/{id}.
-    Serves HTML for browsers and JSON for API clients.
-    """
+    # Check if meeting exists, if not create it automatically
+    from models import Meeting
+    meeting = db.query(Meeting).filter(Meeting.room_id == meeting_id).first()
+    
+    if not meeting:
+        # Get a default owner (admin) for auto-created meetings
+        admin_user = db.query(User).filter(User.email == "admin@gmail.com").first()
+        new_meeting = Meeting(
+            title=f"Meeting: {meeting_id}",
+            room_id=meeting_id,
+            created_by=admin_user.id if admin_user else 1
+        )
+        db.add(new_meeting)
+        db.commit()
+        db.refresh(new_meeting)
+        print(f"Auto-created meeting: {meeting_id}")
+
     accept = request.headers.get("accept", "")
     if "application/json" in accept:
-        # API behavior: Return JSON data
         from routers.meetings import read_meeting_by_room
-        # We allow public info check here, or it will throw 401 if auth is missing in the handler
-        return await read_meeting_by_room(meeting_id, db, current_user=None)
+        return await read_meeting_by_room(meeting_id, db)
     
-    # Browser behavior: Serve the SPA
     index_path = os.path.join(frontend_dist, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
@@ -194,71 +158,30 @@ async def meeting_page_alias(request: Request, meeting_id: str, db: Session = De
 # =====================================
 @app.get("/health")
 async def health_check():
-    """
-    Standard health check endpoint.
-    """
-    return {
-        "status": "ok",
-        "service": "meeting-microservice"
-    }
-
+    return {"status": "ok", "service": "meeting-microservice"}
 
 # =====================================
 # ROOT ENDPOINT
 # =====================================
-
-# Simple test endpoint to check API running
 @app.get("/")
 async def root():
     return {"message": "Welcome to the MeetNow API"}
 
-
 # =====================================
-# SERVE FRONTEND (Single Tunnel Support)
+# SERVE FRONTEND
 # =====================================
-
-# Get absolute path to the frontend/dist folder (relative to this file)
-frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
-
-# Mount assets folder (CSS, JS)
 if os.path.exists(os.path.join(frontend_dist, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
 
-# Catch-all route to serve the SPA (React handles routing)
 @app.get("/{rest_of_path:path}")
 async def serve_frontend(request: Request, rest_of_path: str):
-    # Don't intercept API or WebSocket calls
-    if rest_of_path.startswith("auth/") or rest_of_path.startswith("meetings/") or rest_of_path.startswith("ws/"):
+    # API paths and Admin Portal that should NOT be handled by the frontend SPA
+    exclude_prefixes = ["/auth", "/users", "/meetings", "/ws", "/admin", "/health", "/admin-portal"]
+    full_path = request.url.path
+    if any(full_path.startswith(p) for p in exclude_prefixes):
         return {"detail": "Not Found"}
     
-    # Serve index.html for all other paths (including /meeting/{room_id})
     index_path = os.path.join(frontend_dist, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    
-    # Only return error if build is truly missing
-    return {"error": "Frontend build not found at " + index_path}
-
-
-# =====================================
-# HEALTH CHECK
-# =====================================
-@app.get("/health")
-async def health_check():
-    """
-    Standard health check endpoint.
-    """
-    return {
-        "status": "ok",
-        "service": "meeting-microservice"
-    }
-
-
-# =====================================
-# ROOT ENDPOINT
-# =====================================
-
-# Simple test endpoint to check API running
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the MeetNow API"}
+    return {"error": "Frontend build not found"}

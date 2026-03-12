@@ -17,48 +17,46 @@ router = APIRouter(
 # WebSocket endpoint for a specific meeting room
 @router.websocket("/{room_id}")
 async def websocket_signaling(websocket: WebSocket, room_id: str, token: str = None):
-    # If token is not provided in query params, check headers (though usually query is safer for browser WS)
+    # If token is not provided in query params, check headers
     if not token:
         token = websocket.query_params.get("token")
 
-    if not token:
-        await websocket.close(code=4001) # Unauthorized
-        return
+    username = "Guest"
+    role = "student"
+    user_id = f"guest_{id(websocket)}" # Temporary ID based on connection
 
-    try:
-        # Decode JWT token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            await websocket.close(code=4001)
-            return
-            
-        # Verify user exists in DB
-        db = SessionLocal()
-        user = db.query(User).filter(User.email == email).first()
-        
-        if not user:
-            db.close()
-            await websocket.close(code=4001)
-            return
+    if token:
+        try:
+            # Decode JWT token
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            email: str = payload.get("sub")
+            if email:
+                # Verify user exists in DB
+                db = SessionLocal()
+                user = db.query(User).filter(User.email == email).first()
+                if user:
+                    username = user.username
+                    role = user.role
+                    user_id = str(user.id)
+                db.close()
+        except JWTError:
+            # If token is invalid, we could close, but for public service we can just fallback to guest
+            pass
 
-        # Verify meeting exists in DB
-        meeting = db.query(Meeting).filter(Meeting.room_id == room_id).first()
-        if not meeting:
-            db.close()
-            await websocket.close(code=4004) # Not Found
-            return
-            
-        db.close()
-        
-        # Explicitly set identity from token
-        username = user.username
-        role = user.role
-        user_id = str(user.id)
-
-    except JWTError:
-        await websocket.close(code=4001)
-        return
+    # Ensure meeting exists in DB (should be auto-created by main.py already)
+    db = SessionLocal()
+    meeting = db.query(Meeting).filter(Meeting.room_id == room_id).first()
+    if not meeting:
+        # Fallback create if somehow main.py didn't create it
+        admin_user = db.query(User).filter(User.role == "admin").first()
+        new_meeting = Meeting(
+            title=f"Room: {room_id}",
+            room_id=room_id,
+            created_by=admin_user.id if admin_user else 1
+        )
+        db.add(new_meeting)
+        db.commit()
+    db.close()
 
     # Connect the user to the room
     stable_peer_id = await manager.connect(room_id, websocket, user_id=user_id, username=username, role=role)
